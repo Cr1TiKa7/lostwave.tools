@@ -1,0 +1,91 @@
+﻿@typeparam TItem
+@using System.Collections.ObjectModel
+@using Lostwave.Tools.Models
+
+@inherits ComponentBase
+
+<MudTable Items="@_items" Dense="@dense" Hover="@hover" Bordered="@bordered" Striped="@striped" Filter="new Func<SongItem,bool>(FilterFunc1)" @bind-SelectedItem="selectedItem1">
+    <ToolBarContent>
+        <MudText Typo="Typo.h6">@_items.Count() songs found</MudText>
+        <MudSpacer />
+        <MudTextField @bind-Value="_filterText" Placeholder="You can also search for a timespan like this: 01:50 - 02:24" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>No.</MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<SongItem, object>(x=>x.Artist)">Artist</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<SongItem, object>(x=>x.Title)">Title</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<SongItem, object>(x=>x.Duration)">Duration</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<SongItem, object>(x=>x.Date)">Year</MudTableSortLabel></MudTh>
+        <MudTh>Link</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+    <MudTd DataLabel="No">@context.Id</MudTd>
+        <MudTd DataLabel="Artist">@context.Artist</MudTd>
+        <MudTd DataLabel="Title">@context.Title</MudTd>
+        <MudTd DataLabel="Duration">@context.Duration</MudTd>
+        <MudTd DataLabel="Year">@context.Date</MudTd>
+        <MudTd DataLabel="Link"><MudLink Href="@context.Url" Target="_blank">Link to MySpace</MudLink></MudTd>
+    </RowTemplate>
+    <PagerContent>
+        <MudTablePager PageSizeOptions="new int[] { 20, 40, 60, 80, 100}" />
+    </PagerContent>
+</MudTable>
+
+    @code {
+    [Parameter]
+    public ObservableCollection<TItem> Items { get; set; }
+
+    private ObservableCollection<SongItem> _items = new ObservableCollection<SongItem>();
+    //Variables for the table
+    private bool dense = false;
+    private bool hover = false;
+    private bool striped = true;
+    private bool bordered = false;
+    private string _filterText = "";
+    private SongItem selectedItem1 = null;
+
+    protected override Task OnInitializedAsync()
+    {
+        if (Items != null)
+        {
+            foreach (var item in Items)
+            {
+                if (item is SongItem songItem)
+                {
+                    _items.Add(songItem);
+                }
+            }
+        }
+        return base.OnInitializedAsync();
+    }
+
+    private bool FilterFunc1(SongItem element) => FilterFunc(element, _filterText);
+
+    private bool FilterFunc(SongItem element, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+
+        if (element.Title.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.Artist.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (searchString.Contains("-"))
+        {
+            var splt = searchString.Split("-");
+            if (splt.Count() == 2)
+            {
+                if (TimeSpan.TryParseExact(splt[0].Trim(), "mm\\:ss", System.Globalization.CultureInfo.InvariantCulture, out var fromTime) &&
+                TimeSpan.TryParseExact(splt[1].Trim(), "mm\\:ss", System.Globalization.CultureInfo.InvariantCulture, out var toTime) &&
+                TimeSpan.TryParseExact(element.Duration.Trim(), "m\\:ss", System.Globalization.CultureInfo.InvariantCulture, out var checkTime))
+                {
+                    if (fromTime <= checkTime && toTime >= checkTime)
+                        return true;
+                }
+            }
+        }
+        return false;
+    }
+
+}

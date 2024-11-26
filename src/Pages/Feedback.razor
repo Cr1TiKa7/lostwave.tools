@@ -1,0 +1,43 @@
+﻿@page "/feedback"
+<div class="container">
+    <MudText Typo="Typo.h3">Feedback</MudText>
+    <MudText Typo="Typo.subtitle1">If you have any bugs, feedback or suggestions feel free to enter it below :)!</MudText>
+
+    <p></p>
+    <MudTextField T="string" 
+        Label="Feedback" 
+        Variant="Variant.Text" Text="@_feedbackText" AutoGrow HelperText="Enter your feedback here" 
+        @bind-Value=_feedbackText/>
+   <p></p>
+    <MudButton Variant="Variant.Filled" @onclick=OnBtnSendClick>Send</MudButton>
+
+    <p></p>
+    @if (FeedbackSend)
+    {
+        <MudAlert Severity="Severity.Info">
+            Thank you for the feedback!
+        </MudAlert>
+    }
+</div>
+
+ @code 
+{
+    public string _feedbackText;
+    public bool FeedbackSend = false;
+    private async Task OnBtnSendClick(MouseEventArgs e)
+    {
+        var guid = Guid.NewGuid();
+        if (!Directory.Exists("feedback"))
+            Directory.CreateDirectory("feedback");
+        var feedBackPath = Path.Combine("feedback", $"{guid.ToString()}.txt");
+
+        using (var streamWriter = new StreamWriter(feedBackPath))
+        {
+            streamWriter.Write(_feedbackText);
+        }
+
+        _feedbackText = "";
+        FeedbackSend = true;
+        StateHasChanged();
+    }
+}

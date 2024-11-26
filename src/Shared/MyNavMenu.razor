@@ -1,0 +1,32 @@
+﻿<MudPaper Width="250px" Class="py-3" Elevation="0">
+    <MudNavMenu>
+        <MudText Typo="Typo.h6" Class="px-4">Lostwave Tools @Utils.GetVersion()</MudText>
+        <MudText Typo="Typo.body2" Class="px-4 mud-text-secondary">Made with <MudIcon Icon="@Icons.Material.Filled.Favorite" Title="Favorite" Color="Color.Secondary" /> by Cr1TiKa7</MudText>
+        <MudDivider Class="my-2" />
+        <MudNavLink Href="/" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
+        <MudNavGroup Title="MySpace Tools" Expanded="true" Icon="@Icons.Material.Filled.Dashboard">
+            <MudNavLink Href="/myspace/artists_crawler" Icon="@Icons.Material.Filled.Person2">Artist crawler</MudNavLink>
+            <MudNavLink Href="/myspace/artist_song_crawler" Icon="@Icons.Material.Filled.Person">Artist Song crawler</MudNavLink>
+            <MudNavLink Href="/myspace/song_crawler" Icon="@Icons.Material.Filled.Autorenew">Song crawler</MudNavLink>
+            <MudNavLink  Href="/myspace/connections_crawler" Icon="@Icons.Material.Filled.Handshake">User connection crawler</MudNavLink>
+            <MudNavLink Href="/myspace/results" Icon="@Icons.Material.Filled.ViewList">All results</MudNavLink>
+        </MudNavGroup>
+        @* <MudNavLink Title="Last.FM" Disabled="true">Last.Fm</MudNavLink> *@
+        @* <MudNavGroup Title="Youtube Tools" Expanded="true" Icon="@Icons.Custom.Brands.YouTube"> *@
+            @* <MudNavLink Href="/youtube/fingerprinter">Fingerprint comparer (Experimental)</MudNavLink> *@
+            @* <MudNavLink Href="/youtube/results" Icon="@Icons.Material.Filled.ViewList">All results</MudNavLink> *@
+            @*    <MudNavLink Href="" Disabled=true>Song crawler</MudNavLink>
+            <MudNavLink Href="" Disabled=true>Channel videos crawler</MudNavLink> *@
+            @* <MudNavLink Href="" Icon="@Icons.Material.Filled.ViewList">All results</MudNavLink> *@
+        @* </MudNavGroup> *@
+        <MudNavGroup Title="Last.FM Tools" Disabled=true Expanded="true" Icon="@Icons.Material.Filled.DeviceUnknown">
+            <MudNavLink Href="/lastfm/">Last.FM Searcher</MudNavLink>
+            @* <MudNavLink Href="/youtube/results" Icon="@Icons.Material.Filled.ViewList">All results</MudNavLink> *@
+        </MudNavGroup>
+        @* <MudNavLink Href="/song_finder" Icon="@Icons.Material.Filled.Search">Song finder</MudNavLink> *@
+        @* <MudNavLink Href="/important_links" Icon="@Icons.Material.Filled.SdCardAlert">Important links</MudNavLink> *@
+        <MudNavLink Href="/feedback" Icon="@Icons.Material.Filled.Feedback">Feedback</MudNavLink>
+        <MudNavLink Href="/changelog" Icon="@Icons.Material.Filled.Article">Changelog</MudNavLink>
+        <MudNavLink Href="/about" Icon="@Icons.Material.Filled.QuestionMark">About</MudNavLink>
+    </MudNavMenu>
+</MudPaper>

@@ -1,0 +1,181 @@
+﻿@page "/myspace/viewer/{Type}/{SearchTerm}"
+
+@using BlazorDownloadFile
+@using System.Collections.ObjectModel
+@using Lostwave.Tools.Models
+@using Newtonsoft.Json
+@inject IConfiguration configuration
+@inject IBlazorDownloadFileService BlazorDownloadFileService
+
+<div class="container">
+    <MudText Typo="Typo.h3">Viewer</MudText>
+    <MudText Typo="Typo.subtitle1">
+        <p>
+            <label>Here is the result for the search term <b>@SearchTerm</b></label>
+        </p>
+    </MudText>
+
+    <MudText Typo="Typo.h4">Songs found: @SongItems.Count</MudText>
+
+    @if (IsLoading)
+    {
+        <p>
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-7" />
+        </p>
+    }
+
+    @if (DoesNotExist)
+    {
+        <p>
+            <MudAlert Severity="Severity.Success">
+                There is no result yet for the given search term :(
+            </MudAlert>
+        </p>
+    }
+    @if (!string.IsNullOrEmpty(@WarningMessage))
+    {
+        <MudAlert Severity="Severity.Info">
+            @WarningMessage
+        </MudAlert>
+    }
+
+    @if (SongItems.Count > 0)
+    {
+
+        switch (Type)
+        {
+            case "0":
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick=@(()=> OnDownloadClick($"results/result_{SearchTerm.Replace(" ", "_")}.json"))>Download result as .csv</MudButton>
+                <p></p>
+                <MySpace.Crawler.App.Components.SongListComponent Items="@SongItems"></MySpace.Crawler.App.Components.SongListComponent>
+                break;
+            case "2":
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick=@(()=> OnDownloadClick($"results/artist_songs_{SearchTerm.Replace(" ", "_")}.json"))>Download result as .csv</MudButton>
+                <p></p>
+                <MySpace.Crawler.App.Components.SongListComponent Items="@SongItems"></MySpace.Crawler.App.Components.SongListComponent>
+                break;
+        }
+       @*  <MudTable Items="@Items" Dense="@dense" Hover="@hover" Bordered="@bordered" Striped="@striped" Filter="new Func<SongItem,bool>(FilterFunc1)" @bind-SelectedItem="selectedItem1">
+            <ToolBarContent>
+                <MudText Typo="Typo.h6">@Items.Count() songs found</MudText>
+                <MudSpacer />
+                <MudTextField @bind-Value="_filterText" Placeholder="You can also search for a timespan like this: 01:50 - 02:24" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>No.</MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<SongItem, object>(x=>x.Artist)">Artist</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<SongItem, object>(x=>x.Title)">Title</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<SongItem, object>(x=>x.Duration)">Duration</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<SongItem, object>(x=>x.Date)">Year</MudTableSortLabel></MudTh>
+                <MudTh>Link</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="No">@context.Id</MudTd>
+                    <MudTd DataLabel="Artist">@context.Artist</MudTd>
+                    <MudTd DataLabel="Title">@context.Title</MudTd>
+                    <MudTd DataLabel="Duration">@context.Duration</MudTd>
+                    <MudTd DataLabel="Year">@context.Date</MudTd>
+                    <MudTd DataLabel="Link"><MudLink Href="@context.Url" Target="_blank">Link to MySpace</MudLink></MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager PageSizeOptions="new int[] { 20, 40, 60, 80, 100}" />
+                </PagerContent>
+            </MudTable> *@
+        
+    }
+    
+</div>
+
+@code {
+
+    private bool dense = false;
+    private bool hover = false;
+    private bool striped = true;
+    private bool bordered = false;
+    private string _filterText = "";
+    private SongItem selectedItem1 = null;
+
+    [Parameter]
+    public string SearchTerm { get; set; }
+    [Parameter]
+    public string Type { get; set; }
+    private string WarningMessage { get; set; }
+
+    public bool IsLoading { get; set; }
+    public bool DoesNotExist { get; set; }
+
+    public ObservableCollection<SongItem> SongItems { get; set; } = new ObservableCollection<SongItem>();
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            Load();
+        return base.OnAfterRenderAsync(firstRender);
+    }
+
+    public async Task OnDownloadClick(string filePath)
+    {
+        await BlazorDownloadFileService.DownloadFile(Path.GetFileName(filePath), File.ReadAllBytes(filePath), contentType: "application/octet-stream");
+    }
+
+
+    private bool FilterFunc1(SongItem element) => FilterFunc(element, _filterText);
+
+    private bool FilterFunc(SongItem element, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+
+        if (element.Title.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.Artist.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (searchString.Contains("-"))
+        {
+            var splt = searchString.Split("-");
+            if (splt.Count() == 2)
+            {
+                if (TimeSpan.TryParseExact(splt[0].Trim(), "mm\\:ss", System.Globalization.CultureInfo.InvariantCulture, out var fromTime) &&
+                TimeSpan.TryParseExact(splt[1].Trim(), "mm\\:ss", System.Globalization.CultureInfo.InvariantCulture, out var toTime) &&
+                TimeSpan.TryParseExact(element.Duration.Trim(), "m\\:ss", System.Globalization.CultureInfo.InvariantCulture, out var checkTime))
+                {
+                    if (fromTime <= checkTime && toTime >= checkTime)
+                        return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public async Task Load()
+    {
+        WarningMessage = "";
+        var fileName =  Path.Combine(configuration["WorkerSettings:ResultDirectory"], $"song_{SearchTerm.Replace(" ", "_")}.json");
+        if (File.Exists(fileName))
+        {
+            IsLoading = true;
+            StateHasChanged();
+            var lines = File.ReadAllLines(fileName);
+            var resultFileName = fileName;
+            if (File.Exists(resultFileName))
+            {
+                var obj = JsonConvert.DeserializeObject<List<SongItem>>(File.ReadAllText(resultFileName));
+                var i = 1;
+                foreach (var item in obj)
+                {
+                    item.Id = i;
+                    SongItems.Add(item);
+                    i++;
+                }
+            }
+
+        }
+        else
+        {
+            DoesNotExist = true;
+        }
+        IsLoading = false;
+        StateHasChanged();
+    }
+}

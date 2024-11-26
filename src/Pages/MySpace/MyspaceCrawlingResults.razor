@@ -1,0 +1,225 @@
+﻿@page "/myspace/results"
+@using System.Collections.ObjectModel
+@using BlazorDownloadFile
+@using System.Text
+@using Lostwave.Tools.Models
+@using Newtonsoft.Json
+@inject IJSRuntime JS
+@inject IBlazorDownloadFileService BlazorDownloadFileService
+@inject IConfiguration configuration
+@inject NavigationManager NavigationManager
+
+<div class="container">
+    <MudText Typo="Typo.h3">MySpace results</MudText>
+
+    <p>
+        <MudText Typo="Typo.subtitle1">Here you'll find all the search terms that were already crawled. You can download them at any time as a csv file.</MudText>
+    </p>
+    <MudAlert Severity="Severity.Info">
+        To import it into google sheets you can follow <a href="https://help.loyverse.com/help/how-open-csv-file-google-sheets#:~:text=Go%20to%20the%20'File'%20menu,the%20'Import%20data'%20button." target="_blank">this</a> guide.
+    </MudAlert>
+    <p></p>
+    <MudTable Items="@CrawlItems" Dense="@dense" Hover="@hover" Bordered="@bordered" Striped="@striped" Filter="new Func<CrawlItem,bool>(FilterFunc1)" @bind-SelectedItem="selectedItem1">
+        <ToolBarContent>
+            <MudText Typo="Typo.h6">@CrawlItems.Count() crawlings so far!</MudText>
+            <MudSpacer />
+            <MudTextField @bind-Value="_filterText" Placeholder="" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<CrawlItem, object>(x=>x.SearchTerm)">Search term</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<CrawlItem, object>(x=>x.Type)">Type</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<CrawlItem, object>(x=>x.CrawledAt)">Crawled at</MudTableSortLabel></MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="SearchTerm">@context.SearchTerm</MudTd>
+            <MudTd DataLabel="Type">@context.Type</MudTd>
+            <MudTd DataLabel="CrawledAt">@context.CrawledAt</MudTd>
+            <MudTd DataLabel="Actions">
+                <MudButtonGroup Color="Color.Primary" Size="Size.Small" Variant="Variant.Filled" OverrideStyles=false>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick=@(()=> OnDownloadClick(context.FilePath, context.Type, false))>Download as .csv</MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" @onclick=@(()=> OnDownloadClick(context.FilePath, context.Type, true))>Download as .json</MudButton>
+                </MudButtonGroup>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new int[] { 20, 40, 60, 80, 100}" />
+        </PagerContent>
+    </MudTable>
+</div>
+
+@code {
+    private bool dense = false;
+    private bool hover = false;
+    private bool striped = true;
+    private bool bordered = false;
+
+    private string _filterText = "";
+
+    public ObservableCollection<CrawlItem> CrawlItems { get; set; } = new ObservableCollection<CrawlItem>();
+    private CrawlItem selectedItem1 = null;
+
+
+    protected override Task OnInitializedAsync()
+    {
+        var resultPath = configuration["WorkerSettings:ResultDirectory"];
+        if (Directory.Exists(resultPath))
+            foreach (var file in Directory.GetFiles(resultPath, "*.json"))
+            {
+                var fileInfo = new FileInfo(file);
+                if (fileInfo.Name.StartsWith("song_"))
+                {
+                    var searchTerm = fileInfo.Name.Replace("song_", "").Replace(".json", "").Replace("_", " ");
+                    CrawlItems.Add(new CrawlItem
+                        {
+                            CrawledAt = fileInfo.LastWriteTime.ToString("dd.MM.yyyy - HH:mm"),
+                            SearchTerm = searchTerm,
+                            Type = "Song",
+                            FilePath = Path.GetFullPath(file)
+                        });
+                }
+                else if (fileInfo.Name.StartsWith("artists_"))
+                {
+                    var searchTerm = fileInfo.Name.Replace("artists_", "").Replace(".json", "").Replace("_", " ");
+                    CrawlItems.Add(new CrawlItem
+                        {
+                            CrawledAt = fileInfo.LastWriteTime.ToString("dd.MM.yyyy - HH:mm"),
+                            SearchTerm = searchTerm,
+                            Type = "Artist",
+                            FilePath = Path.GetFullPath(file)
+                        });
+                }
+                else if (fileInfo.Name.StartsWith("artist_songs_"))
+                {
+                    var searchTerm = fileInfo.Name.Replace("artist_songs_", "").Replace(".json", "").Replace("_", " ");
+                    CrawlItems.Add(new CrawlItem
+                        {
+                            CrawledAt = fileInfo.LastWriteTime.ToString("dd.MM.yyyy - HH:mm"),
+                            SearchTerm = searchTerm,
+                            Type = "Artist songs",
+                            FilePath = Path.GetFullPath(file)
+                        });
+                }
+                else if (fileInfo.Name.StartsWith("userconnection_"))
+                {
+                    var searchTerm = fileInfo.Name.Replace("userconnection_", "").Replace(".json", "").Replace("_", " ");
+                    CrawlItems.Add(new CrawlItem
+                        {
+                            CrawledAt = fileInfo.LastWriteTime.ToString("dd.MM.yyyy - HH:mm"),
+                            SearchTerm = searchTerm,
+                            Type = "Userconnection",
+                            FilePath = Path.GetFullPath(file)
+                        });
+                }
+            }
+        return base.OnInitializedAsync();
+    }
+
+    public async Task OnViewClick(string searchTerm)
+    {
+        var type = 0;
+        if (selectedItem1 != null)
+        {
+            switch (selectedItem1.Type)
+            {
+                case "Song":
+                    type = 0;
+                    break;
+                case "Artist":
+                    type = 1;
+                    break;
+                case "Artist songs":
+                    type = 2;
+                    break;
+                case "Userconnection":
+                    type = 3;
+                    break;
+                case "Fingerprint":
+                    type = 4;
+                    break;
+            }
+        }
+        NavigationManager.NavigateTo($"/myspace/viewer/{type}/{searchTerm}");
+    }
+    public async Task OnDownloadClick(string filePath, string type, bool asJson)
+    {
+        if (!asJson)
+        {
+            if (type == "Song" || type == "Artist songs")
+            {
+                var res = JsonConvert.DeserializeObject<List<SongItem>>(File.ReadAllText(filePath));
+                var sb = new StringBuilder();
+                sb.AppendLine("\"Artist\";\"Title\";\"Album\";\"Duration\";\"Date\";\"Url\"");
+                foreach (var item in res)
+                {
+                    sb.AppendLine($"\"{item.Artist.Replace(";", "").Replace("\t", "").Replace("\n", "")}\";\"{item.Title.Replace(";", "").Replace("\t", "").Replace("\n", "")}\";\"{item.Album.Replace(";", "").Replace("\t", "").Replace("\n", "")}\";\"{item.Duration.Replace(";", "")}\";\"{item.Date.Replace(";", "")}\";\"{item.Url.Replace(";", "")}\"");
+                }
+                await BlazorDownloadFileService.DownloadFile(Path.GetFileName(filePath + ".csv"), System.Text.Encoding.UTF8.GetBytes(sb.ToString()), contentType: "application/octet-stream");
+            }
+            else if (type == "Userconnection")
+            {
+                var res = JsonConvert.DeserializeObject<List<UserConnectionItem>>(File.ReadAllText(filePath));
+
+                var sb = new StringBuilder();
+                sb.AppendLine("\"Username\";\"Link\";");
+                foreach (var item in res)
+                {
+                    sb.AppendLine($"\"{item.Username}\";\"{item.Url}\";");
+                }
+
+                await BlazorDownloadFileService.DownloadFile(Path.GetFileName(filePath + ".csv"), System.Text.Encoding.UTF8.GetBytes(sb.ToString()), contentType: "application/octet-stream");
+
+            }
+            else if (type == "Artist")
+            {
+                var res = JsonConvert.DeserializeObject<List<ArtistItem>>(File.ReadAllText(filePath));
+
+                var sb = new StringBuilder();
+                sb.AppendLine("\"Artist\";\"Link\";");
+                foreach (var item in res)
+                {
+                    sb.AppendLine($"\"{item.Name.Replace("\t", "").Replace("\n", "")}\";\"{item.Url}\";");
+                }
+
+                await BlazorDownloadFileService.DownloadFile(Path.GetFileName(filePath + ".csv"), System.Text.Encoding.UTF8.GetBytes(sb.ToString()), contentType: "application/octet-stream");
+
+            }
+        }
+        else
+        {
+            if (type == "Song" || type == "Artist songs")
+            {
+                var res = JsonConvert.DeserializeObject<List<SongItem>>(File.ReadAllText(filePath));
+                var id = 1;
+                foreach (var item in res)
+                {
+                    item.Id = id;
+                    id = id + 1;
+                }
+                var res2 = JsonConvert.SerializeObject(res, Formatting.Indented);
+                await BlazorDownloadFileService.DownloadFile(Path.GetFileName(filePath + ".json"), System.Text.Encoding.UTF8.GetBytes(res2), contentType: "application/octet-stream");
+
+            }
+            else
+            {
+                var res = JsonConvert.DeserializeObject(File.ReadAllText(filePath));
+                var res2 = JsonConvert.SerializeObject(res, Formatting.Indented);
+                await BlazorDownloadFileService.DownloadFile(Path.GetFileName(filePath + ".json"), System.Text.Encoding.UTF8.GetBytes(res2), contentType: "application/octet-stream");
+            }
+        }
+
+    }
+
+    private bool FilterFunc1(CrawlItem element) => FilterFunc(element, _filterText);
+
+    private bool FilterFunc(CrawlItem element, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+
+        if (element.SearchTerm.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+
+}

@@ -1,0 +1,226 @@
+﻿@page "/myspace/connections_crawler"
+@using System.Collections.ObjectModel
+@using BlazorDownloadFile
+@using Lostwave.Tools.Models
+@using Newtonsoft.Json
+@using System.Diagnostics
+@inject IConfiguration configuration
+@inject IBlazorDownloadFileService BlazorDownloadFileService
+
+<div class="container">
+    <MudText Typo="Typo.h3">User connection crawler</MudText>
+    <p>
+        <MudText Typo="Typo.subtitle1">This tool allows you to get all connections of a MySpace user and download them as a .csv</MudText>
+    </p>
+
+    <div class="input-group mb-3">
+        <MudTextField T="string" Label="Username" HelperText="Enter the name of the user you want to get the connection list from" HelperTextOnFocus="true" Variant="Variant.Text" @bind-Value=@SearchTerm @bind-Disabled=@IsSearching @onkeypress=OnTxtSearchTermKeyUp />
+        <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search" @bind-Disabled=@IsSearching @onclick="OnBtnSearchClick" />
+    </div>
+
+    <MudAlert Severity="Severity.Info">
+        Sometimes the tool shows that a user has for example 22 connections but it just finds 20. <br />
+        This is because some myspace connections are private or do not exist anymore and I am not able to crawl them.
+    </MudAlert>
+
+    @if (IsSearching)
+    {
+        <MudText>@LastLog</MudText>
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        <p></p>
+        <MudAlert Severity="Severity.Warning">
+            Please keep in mind that the speed of the tool is unfortunatly dependent on MySpace :/! <br />
+            One page needs in average a second to crawl! Worst case is up to 10 seconds per page. <br />
+        </MudAlert>
+    }
+    
+    @if (IsFinished)
+    {
+        <p>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick=@(()=> OnDownloadClick($"results/userconnection_{_downloadTerm.Replace(" ", "_")}.csv"))>Download result as .csv</MudButton>
+        </p>
+    }
+    @if (Items.Count > 0)
+    {
+        <MudText Typo="Typo.h6">@Items.Count() connections found</MudText>
+
+        <MudGrid Spacing="6" Justify="Justify.FlexStart">
+            @foreach (var user in Items)
+            {
+                <MudItem xs="3">
+                    <MudCard>
+                        <MudCardMedia Image="@user.Image" Height="200" />
+                        <MudCardContent>
+                            <MudText Typo="Typo.h5">@user.Username</MudText>
+                            </MudCardContent>
+                            <MudCardActions>
+                                <MudButton Href="@user.Url" Target="_blank" Variant="Variant.Text" Color="Color.Primary">MySpace Link</MudButton>
+                            </MudCardActions>
+                        </MudCard>
+                    </MudItem>
+            }
+        </MudGrid>
+    }
+</div>
+
+
+
+@code {
+    public string SearchTerm { get; set; }
+    public bool IsSearching { get; set; }
+    public bool IsFinished { get; set; }
+    public string LastLog { get; set; }
+    private Guid SearchGuid { get; set; }
+
+    private string _downloadTerm{ get; set; }
+    private FileSystemWatcher _fileSystemWatcher;
+    public ObservableCollection<UserConnectionItem> Items { get; set; } = new ObservableCollection<UserConnectionItem>
+    { };
+
+    private async Task OnTxtSearchTermKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key.Equals("Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            await Crawl();
+        }
+    }
+    private async Task OnBtnSearchClick(MouseEventArgs e)
+    {
+        await Crawl();
+    }
+
+    private async Task Crawl()
+    {
+        if (string.IsNullOrEmpty(SearchTerm))
+            return;
+        if (IsSearching)
+            return;
+
+        IsFinished = false;
+        IsSearching = true;
+        StateHasChanged();
+        Items.Clear();
+        try
+        {
+            var resultFileName = Path.Combine(configuration["WorkerSettings:ResultDirectory"], $"userconnection_{SearchTerm.Replace(" ", "_")}.json");
+            var logPath = Path.Combine(configuration["WorkerSettings:LogDirectory"], SearchTerm.Replace(" ", "_"));
+            if (!File.Exists(resultFileName))
+            {
+                LastLog = $"Getting {SearchTerm} connection list...";
+                if (!Directory.Exists(logPath))
+                    Directory.CreateDirectory(logPath);
+                _fileSystemWatcher = new FileSystemWatcher(logPath);
+                _fileSystemWatcher.Changed += OnLogFileChanged;
+                _fileSystemWatcher.Created += OnLogFileChanged;
+                _fileSystemWatcher.Renamed += OnLogFileChanged;
+                _fileSystemWatcher.Deleted += OnLogFileChanged;
+                _fileSystemWatcher.Error += (s, e) =>
+                {
+                    e = e;
+                };
+
+                _fileSystemWatcher.NotifyFilter = NotifyFilters.LastAccess | NotifyFilters.LastWrite
+          | NotifyFilters.FileName | NotifyFilters.DirectoryName;
+                _fileSystemWatcher.IncludeSubdirectories = true;
+                _fileSystemWatcher.Filter = "*.log";
+
+                SearchGuid = Guid.NewGuid();
+
+                var jobFile = Path.Combine(configuration["WorkerSettings:JobDirectory"], $"{SearchGuid}.json");
+
+
+                using (var streamWriter = new StreamWriter(jobFile))
+                {
+                    var newJob = new Job
+                    {
+                            Name = "myspace_user_connection_crawler"
+                    };
+                    newJob.Parameter.Add("username", SearchTerm);
+                    newJob.Parameter.Add("guid", SearchGuid.ToString());
+                    streamWriter.Write(JsonConvert.SerializeObject(newJob));
+                }
+
+
+                _fileSystemWatcher.EnableRaisingEvents = true;
+            }
+            else
+            {
+                IsSearching = false;
+                IsFinished = true;
+                StateHasChanged();
+                using (var streamReader = new StreamReader(resultFileName))
+                {
+                    var res = JsonConvert.DeserializeObject<List<UserConnectionItem>>(streamReader.ReadToEnd());
+
+                    if (res != null)
+                    {
+                        foreach (var item in res)
+                        {
+                            Items.Add(item);
+                        }
+                    }
+                }
+            }
+
+          
+        }
+        catch (Exception ex)
+        {
+            ex = ex;
+        }
+        finally
+        {
+
+            StateHasChanged();
+        }
+    }
+    public void OnLogFileChanged(object sender, FileSystemEventArgs e)
+    {
+        if (e.Name == $"log_{SearchTerm.Replace(" ", "_")}_{SearchGuid.ToString()}.log")
+        {
+            try
+            {
+                LastLog = File.ReadAllLines(e.FullPath).Last() ?? "";
+                if (LastLog.StartsWith("FINISHED:"))
+                {
+                    IsFinished = true;
+                    _downloadTerm = SearchTerm;
+                    IsSearching = false;
+                    if (_fileSystemWatcher != null)
+                        _fileSystemWatcher.Changed -= OnLogFileChanged;
+                    var resultFileName = Path.Combine(configuration["WorkerSettings:ResultDirectory"], $"userconnection_{SearchTerm.Replace(" ", "_")}.json");
+                    if (File.Exists(resultFileName))
+                    {
+                        var obj = JsonConvert.DeserializeObject<List<UserConnectionItem>>(File.ReadAllText(resultFileName));
+                        foreach (var item in obj)
+                        {
+                            Items.Add(item);
+                        }
+                    }
+                }
+                InvokeAsync(() => StateHasChanged());
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+    }
+
+    public async Task OnDownloadClick(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            using (var streamWriter = new StreamWriter(filePath))
+            {
+                streamWriter.WriteLine("\"Username\";\"Link\";");
+                foreach (var item in Items)
+                {
+                    streamWriter.WriteLine($"\"{item.Username}\";\"{item.Url}\";");
+                }
+            }
+        }
+
+        await BlazorDownloadFileService.DownloadFile(Path.GetFileName(filePath), File.ReadAllBytes(filePath), contentType: "application/octet-stream");
+    }
+
+}

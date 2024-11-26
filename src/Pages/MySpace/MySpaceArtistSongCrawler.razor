@@ -1,0 +1,287 @@
+﻿@page "/myspace/artist_song_crawler"
+@using BlazorDownloadFile
+@using System.Collections.ObjectModel
+@using System.Diagnostics
+@using Lostwave.Tools.Components
+@using Lostwave.Tools.Models
+@using Newtonsoft.Json
+@using System.Text
+@inherits LayoutComponentBase
+
+@inject IConfiguration configuration
+@inject IBlazorDownloadFileService BlazorDownloadFileService
+
+
+<div class="container">
+    <MudText Typo="Typo.h3">MySpace Artist Song Crawler</MudText>
+    <MudText Typo="Typo.subtitle1">This tool allows you to get every song by an artist on MySpace</MudText>
+
+    <div class="input-group mb-3">
+        <MudTextField T="string" Label="Artist name" HelperText="Make sure to type the artist name of the url. E.g. for this artist https://myspace.com/entershikari/music/songs enter 'entershikari'" HelperTextOnFocus="true" Variant="Variant.Text" @bind-Value=@SearchTerm @bind-Disabled=@IsSearching @onkeypress=OnTxtSearchTermKeyUp />
+        <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search" @bind-Disabled=@IsSearching @onclick="OnBtnSearchClick" />
+    </div>
+
+    @if (IsCached)
+    {
+        <MudAlert Severity="Severity.Success">
+            Someone already crawled this exact search term so enjoy the cached result! :)
+        </MudAlert>
+        <p></p>
+    }
+
+    @if (IsLoading)
+    {
+        <p>
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-7" />
+        </p>
+    }
+    @if (IsSearching)
+    {
+        <MudText>@LastLog</MudText>
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        <p></p>
+        <MudAlert Severity="Severity.Warning">
+            Please keep in mind that the speed of the tool is unfortunatly dependent on MySpace :/! <br />
+            One page needs in average a second to crawl! Worst case is up to 10 seconds per page. <br />
+            You can leave this site at any time. The tool will keep doing your crawling request in the background. <br />
+            Visit <a href="/myspace/viewer/@SearchTerm">this</a> site to check the result when it's finished!
+        </MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(@WarningMessage))
+    {
+        <MudAlert Severity="Severity.Info">
+            @WarningMessage
+        </MudAlert>
+    }
+    <p></p>
+
+
+    <MudDivider DividerType="DividerType.FullWidth" Class="my-6" />
+
+    @if (IsFinished)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick=@(()=> OnDownloadClick($"results/artist_songs_{_downloadTerm.Replace(" ", "_")}.json"))>Download result as .csv</MudButton>
+        <p></p>
+        
+        <SongListComponent Items="@Items"></SongListComponent>
+       
+    }
+</div>
+
+@code {
+    public bool IsFinished = false;
+    public bool IsSearching = false;
+    private bool IsCached = false;
+    private string _downloadTerm = "";
+    public ObservableCollection<SongItem> Items { get; set; } = new ObservableCollection<SongItem>();
+    private string SearchTerm { get; set; }
+    private string LastLog { get; set; } = "Crawling service is starting";
+    private Guid SearchGuid { get; set; }
+    private string WarningMessage { get; set; }
+    public bool IsLoading { get; set; }
+
+    //Variables for the table
+    private bool dense = false;
+    private bool hover = false;
+    private bool striped = true;
+    private bool bordered = false;
+    private string _filterText = "";
+    private SongItem selectedItem1 = null;
+
+    private bool FilterFunc1(SongItem element) => FilterFunc(element, _filterText);
+
+    private bool FilterFunc(SongItem element, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+
+        if (element.Title.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.Artist.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (searchString.Contains("-"))
+        {
+            var splt = searchString.Split("-");
+            if (splt.Count() == 2)
+            {
+                if (TimeSpan.TryParseExact(splt[0].Trim(), "mm\\:ss", System.Globalization.CultureInfo.InvariantCulture, out var fromTime) &&
+                TimeSpan.TryParseExact(splt[1].Trim(), "mm\\:ss", System.Globalization.CultureInfo.InvariantCulture, out var toTime) &&
+                TimeSpan.TryParseExact(element.Duration.Trim(), "m\\:ss", System.Globalization.CultureInfo.InvariantCulture, out var checkTime))
+                {
+                    if (fromTime <= checkTime && toTime >= checkTime)
+                        return true;
+                }
+            }
+        }
+        return false;
+    }
+
+
+    protected override Task OnInitializedAsync()
+    {
+        return base.OnInitializedAsync();
+    }
+
+    private void OnPageScraped(object sender, List<SongItem> songs)
+    {
+        foreach (var item in songs)
+        {
+            Items.Add(item);
+        }
+    }
+
+    private void OnLog(object sender, string text)
+    {
+        LastLog = text;
+        StateHasChanged();
+    }
+    private FileSystemWatcher _fileSystemWatcher;
+
+    private async Task OnBtnSearchClick(MouseEventArgs e)
+    {
+        Crawl();
+    }
+
+    public void OnLogFileChanged(object sender, FileSystemEventArgs e)
+    {
+        if (e.Name == $"log_{SearchTerm.Replace(" ", "_")}_{SearchGuid.ToString()}.log")
+        {
+            try
+            {
+                LastLog = File.ReadAllLines(e.FullPath).Last() ?? "";
+                if (LastLog.StartsWith("FINISHED:"))
+                {
+                    IsLoading = false;
+                    IsFinished = true;
+                    IsSearching = false;
+                    _downloadTerm = SearchTerm;
+                    if (_fileSystemWatcher != null)
+                        _fileSystemWatcher.Changed -= OnLogFileChanged;
+                    var resultFileName = Path.Combine(configuration["WorkerSettings:ResultDirectory"], $"artist_songs_{_downloadTerm.Replace(" ", "_")}.json");
+                    if (File.Exists(resultFileName))
+                    {
+                        var obj = JsonConvert.DeserializeObject<List<SongItem>>(File.ReadAllText(resultFileName));
+                        var i = 1;
+                        foreach (var item in obj)
+                        {
+                            item.Id = i;
+                            Items.Add(item);
+                            i++;
+                        }
+                    }
+                }
+                InvokeAsync(() => StateHasChanged());
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+    }
+
+    public async Task OnDownloadClick(string filePath)
+    {
+        var res = JsonConvert.DeserializeObject<List<SongItem>>(File.ReadAllText(filePath));
+        var sb = new StringBuilder();
+        sb.AppendLine("\"Artist\";\"Title\";\"Album\";\"Duration\";\"Date\";\"Url\"");
+        foreach (var item in res)
+        {
+            sb.AppendLine($"\"{item.Artist.Replace(";", "")}\";\"{item.Title.Replace(";", "")}\";\"{item.Album.Replace(";", "")}\";\"{item.Duration.Replace(";", "")}\";\"{item.Date.Replace(";", "")}\";\"{item.Url.Replace(";", "")}\"");
+        }
+
+        await BlazorDownloadFileService.DownloadFile(Path.GetFileName(filePath + ".csv"), System.Text.Encoding.UTF8.GetBytes(sb.ToString()), contentType: "application/octet-stream");
+     }
+
+    private async Task Crawl()
+    {
+        if (string.IsNullOrEmpty(SearchTerm))
+            return;
+        if (IsSearching)
+            return;
+
+        WarningMessage = "";
+        Items.Clear();
+        IsCached = false;
+        IsFinished = false;
+        IsSearching = true;
+        StateHasChanged();
+        try
+        {
+            var resultFileName = Path.Combine(configuration["WorkerSettings:ResultDirectory"], $"artist_songs_{SearchTerm.Replace(" ", "_")}.json");
+            if (!File.Exists(resultFileName))
+            {
+                LastLog = "Crawling service is starting";
+                if (!Directory.Exists($"./logs/{SearchTerm.Replace(" ", "_")}"))
+                    Directory.CreateDirectory($"./logs/{SearchTerm.Replace(" ", "_")}");
+                _fileSystemWatcher = new FileSystemWatcher($"./logs/{SearchTerm.Replace(" ", "_")}");
+                _fileSystemWatcher.Changed += OnLogFileChanged;
+                _fileSystemWatcher.Created += OnLogFileChanged;
+                _fileSystemWatcher.Renamed += OnLogFileChanged;
+                // _fileSystemWatcher.Error += OnLogFileChanged;
+                _fileSystemWatcher.Deleted += OnLogFileChanged;
+                _fileSystemWatcher.Error += (s, e) =>
+                {
+                    e = e;
+                };
+
+                _fileSystemWatcher.NotifyFilter = NotifyFilters.LastAccess | NotifyFilters.LastWrite
+          | NotifyFilters.FileName | NotifyFilters.DirectoryName;
+                _fileSystemWatcher.IncludeSubdirectories = true;
+                _fileSystemWatcher.Filter = "*.log";
+
+                SearchGuid = Guid.NewGuid();
+                var jobFile = Path.Combine(configuration["WorkerSettings:JobDirectory"], $"{SearchGuid}.json");
+
+                using (var streamWriter = new StreamWriter(jobFile))
+                {
+                    var newJob = new Job
+                        {
+                            Name = "myspace_artist_song_crawler"
+                        };
+                    newJob.Parameter.Add("artist", SearchTerm);
+                    newJob.Parameter.Add("guid", SearchGuid.ToString());
+                    streamWriter.Write(JsonConvert.SerializeObject(newJob));
+                }
+
+                _fileSystemWatcher.EnableRaisingEvents = true;
+            }
+            else
+            {
+                _downloadTerm = SearchTerm;
+                using (var streamReader = new StreamReader(resultFileName))
+                {
+                    var res = JsonConvert.DeserializeObject<List<SongItem>>(streamReader.ReadToEnd());
+
+                    if (res != null)
+                    {
+                        var i = 1;
+                        foreach (var item in res)
+                        {
+                            item.Id = i;
+                            Items.Add(item);
+                            i++;
+                        }
+                    }
+                }
+                IsCached = true;
+                IsLoading = false;
+                IsFinished = true;
+                IsSearching = false;
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ex = ex;
+        }
+    }
+
+
+    private async Task OnTxtSearchTermKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key.Equals("Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            Crawl();
+        }
+    }
+}
