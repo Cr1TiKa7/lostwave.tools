@@ -6,7 +6,12 @@ namespace Lostwave.Tools.Services
     public class BackgroundJobService : IHostedService
     {
         private readonly ILogger<BackgroundJobService> _logger;
+        private readonly DiscordService _discordService;
 
+        public BackgroundJobService(DiscordService discordService)
+        {
+            _discordService = discordService;
+        }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -17,6 +22,7 @@ namespace Lostwave.Tools.Services
             if (!Directory.Exists("logs"))
                 Directory.CreateDirectory("logs");
 
+            _discordService.Start();
 
             var fileSystemWatcher = new FileSystemWatcher("jobs");
             fileSystemWatcher.Created += OnNewJobFileCreated;
